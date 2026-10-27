@@ -511,12 +511,50 @@ export default function Home() {
 
   const processFile = (selectedFile: File) => {
     const ext = selectedFile.name.split(".").pop()?.toLowerCase();
-    if (ext && ["mp4", "mov", "avi", "mkv"].includes(ext)) {
+    if (!ext || !["mp4", "mov", "avi", "mkv"].includes(ext)) {
+      setErrorMsg("Unsupported file format. Please upload an MP4, MOV, AVI, or MKV video.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // 1. Enforce Max File Size (100 MB)
+    const MAX_SIZE_MB = 100;
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+    if (selectedFile.size > MAX_SIZE_BYTES) {
+      const fileSizeMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
+      setErrorMsg(`Video file size is ${fileSizeMB}MB, which exceeds the ${MAX_SIZE_MB}MB limit. Please upload a smaller video.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // 2. Enforce Max Video Duration (Max 3 minutes / 180 seconds)
+    const MAX_DURATION_SEC = 180;
+    const tempVideo = document.createElement("video");
+    tempVideo.preload = "metadata";
+    const blobUrl = URL.createObjectURL(selectedFile);
+    tempVideo.src = blobUrl;
+
+    tempVideo.onloadedmetadata = () => {
+      URL.revokeObjectURL(blobUrl);
+      const dur = tempVideo.duration;
+      if (dur && dur > MAX_DURATION_SEC) {
+        const mins = Math.floor(dur / 60);
+        const secs = Math.floor(dur % 60);
+        setErrorMsg(`Video duration is ${mins}m ${secs}s, which exceeds the 3-minute limit (max 180s). Please trim your video to 3 minutes or less.`);
+        setFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
       setFile(selectedFile);
       setErrorMsg(null);
-    } else {
-      setErrorMsg("Unsupported file format. Please upload an MP4, MOV, AVI, or MKV video.");
-    }
+    };
+
+    tempVideo.onerror = () => {
+      URL.revokeObjectURL(blobUrl);
+      // Fallback: accept file if browser video player codec cannot parse, backend will strictly validate
+      setFile(selectedFile);
+      setErrorMsg(null);
+    };
   };
 
   const handleRemoveFile = (e?: React.MouseEvent) => {
@@ -570,6 +608,10 @@ export default function Home() {
 
   const uploadAndTranscribe = async () => {
     if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setErrorMsg("Video file size exceeds the 100MB limit. Please upload a smaller video.");
+      return;
+    }
     setLoading(true);
     setTranscribeProgress(5);
     setTranscribeStage("Uploading video and extracting audio stream...");
@@ -1598,7 +1640,7 @@ export default function Home() {
                       Click to upload <span className="font-normal text-slate-500 dark:text-slate-400">or drag and drop</span>
                     </label>
                     <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
-                      MP4, MOV, AVI, or MKV (Max 100MB)
+                      MP4, MOV, AVI, or MKV • Max 3 Mins • Max 100MB
                     </p>
                   </div>
                 )}

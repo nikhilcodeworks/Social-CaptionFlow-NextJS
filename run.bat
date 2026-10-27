@@ -14,7 +14,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo [1/3] Launching Backend Server in dedicated terminal...
-start "Social-CaptionFlow-NextJS - Backend" cmd /k "title Social-CaptionFlow-NextJS - Backend && cd backend && python main.py || python app.py"
+start "Social-CaptionFlow-NextJS - Backend" cmd /k "title Social-CaptionFlow-NextJS - Backend && cd backend && python run.py || python main.py"
 
 echo [INFO] Waiting 3 seconds for backend initialization...
 timeout /t 3 /nobreak >nul

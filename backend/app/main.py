@@ -10,11 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.config import UPLOAD_DIR, OUTPUT_DIR, WHISPER_MODEL, GEMINI_API_KEY, CORS_ORIGINS
+from app.config import (
+    UPLOAD_DIR, 
+    OUTPUT_DIR, 
+    WHISPER_MODEL, 
+    GEMINI_API_KEY, 
+    CORS_ORIGINS,
+    MAX_VIDEO_DURATION_SECONDS,
+    MAX_VIDEO_SIZE_MB,
+    MAX_VIDEO_SIZE_BYTES
+)
 from app.services.audio import extract_audio
 from app.services.transcribe import transcribe_audio
 from app.services.subtitle import generate_ass_file
-from app.services.video import burn_subtitles
+from app.services.video import burn_subtitles, get_video_duration
 from app.services.translate import (
     translate_words_with_gemini, 
     verify_gemini_api_key,
@@ -202,11 +211,34 @@ async def transcribe_video(
     audio_path = os.path.join(UPLOAD_DIR, f"{job_id}.wav")
     
     try:
-        # Save video locally in chunks to conserve RAM on cloud instances
+        # Save video locally in chunks while strictly enforcing MAX_VIDEO_SIZE_MB
         logger.info(f"Saving uploaded video to: {video_path}")
+        total_size = 0
         with open(video_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
+                total_size += len(chunk)
+                if total_size > MAX_VIDEO_SIZE_BYTES:
+                    f.close()
+                    if os.path.exists(video_path):
+                        os.remove(video_path)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Video file size exceeds {MAX_VIDEO_SIZE_MB}MB limit. Please upload a smaller video."
+                    )
                 f.write(chunk)
+
+        # Enforce maximum video duration (Max 3 minutes / 180 seconds)
+        duration = get_video_duration(video_path)
+        logger.info(f"Uploaded video duration: {duration:.2f}s (Max limit: {MAX_VIDEO_DURATION_SECONDS}s)")
+        if duration > MAX_VIDEO_DURATION_SECONDS:
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            mins = int(duration // 60)
+            secs = int(duration % 60)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Video duration is {mins}m {secs}s, which exceeds the 3-minute limit (max 180s). Please trim your video to 3 minutes or less."
+            )
             
         # Extract audio
         logger.info(f"Extracting audio from video: {video_path}")
@@ -236,6 +268,14 @@ async def transcribe_video(
             "filename": file.filename,
             "words": words
         }
+    except HTTPException:
+        # Re-raise validation errors directly with their original status code and message
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        gc.collect()
+        raise
     except Exception as e:
         logger.error(f"Error during transcription workflow: {str(e)}")
         # Cleanup on failure

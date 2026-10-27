@@ -1,9 +1,38 @@
 import subprocess
 import os
+import re
 import logging
 from app.services.audio import get_ffmpeg_cmd
 
 logger = logging.getLogger(__name__)
+
+def get_video_duration(video_path: str) -> float:
+    """
+    Extracts total video duration in seconds using FFmpeg.
+    Returns 0.0 if unable to read duration.
+    """
+    if not os.path.exists(video_path):
+        return 0.0
+
+    ffmpeg_bin = get_ffmpeg_cmd()
+    try:
+        cmd = [ffmpeg_bin, "-i", video_path]
+        result = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=15
+        )
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr)
+        if match:
+            hours, minutes, seconds = match.groups()
+            return round(int(hours) * 3600 + int(minutes) * 60 + float(seconds), 2)
+    except Exception as e:
+        logger.warning(f"Error determining video duration: {e}")
+        
+    return 0.0
 
 def format_ffmpeg_path(path: str) -> str:
     r"""
