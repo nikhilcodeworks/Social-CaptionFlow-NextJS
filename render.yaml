@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: social-captionflow-backend
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: python run.py
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: WHISPER_MODEL
+        value: tiny
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: GROQ_WHISPER_MODEL
+        value: whisper-large-v3-turbo
+      - key: MAX_VIDEO_DURATION_SECONDS
+        value: 180
+      - key: MAX_VIDEO_SIZE_MB
+        value: 100
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
